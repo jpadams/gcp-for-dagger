@@ -1,0 +1,9 @@
+{
+  "name": "gcp",
+  "sdk": "go",
+  "root-for": [
+    {
+      "source": "."
+    }
+  ]
+}
