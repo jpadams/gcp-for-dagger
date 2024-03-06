@@ -9,29 +9,32 @@ import (
 
 type Gcp struct{}
 
-// example usage: "dagger call get-secret --gcp-credentials ~/.config/gcloud/application_default_credentials.json"
+// example usage: "dagger call get-secret --gcp-credentials ~/.config/gcloud/credentials.db"
 func (m *Gcp) GetSecret(ctx context.Context, gcpCredentials *File) (string, error) {
 	ctr, err := m.WithGcpSecret(ctx, dag.Container().From("ubuntu:latest"), gcpCredentials)
 	if err != nil {
 		return "", err
 	}
 	return ctr.
-		WithExec([]string{"bash", "-c", "cat /root/.config/gcloud/application_default_credentials.json |base64"}).
+		WithExec([]string{"bash", "-c", "cat /root/.config/gcloud/credentials.db |base64"}).
 		Stdout(ctx)
 }
 
 func (m *Gcp) WithGcpSecret(ctx context.Context, ctr *Container, gcpCredentials *File) (*Container, error) {
-	credsFile, err := gcpCredentials.Contents(ctx)
-	if err != nil {
-		return nil, err
-	}
-	secret := dag.SetSecret("gcp-credential", credsFile)
-	return ctr.WithMountedSecret("/root/.config/gcloud/application_default_credentials.json", secret), nil
+	// gcloud wants to open file as writable, so we can't use WithMountedSecret here sadly
+	return ctr.WithFile("/root/.config/gcloud/credentials.db", gcpCredentials), nil
+
+	// credsFile, err := gcpCredentials.Contents(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// secret := dag.SetSecret("gcp-credential", credsFile)
+	// return ctr.WithMountedSecret("/tmp/.config/gcloud/credentials.db", secret), nil
 }
 
 func (m *Gcp) GcpCli(ctx context.Context, gcpCredentials *File) (*Container, error) {
 	ctr := dag.Container().
-		From("gcr.io/google.com/cloudsdktool/google-cloud-cli:latest")
+		From("gcr.io/google.com/cloudsdktool/google-cloud-cli:467.0.0")
 	ctr, err := m.WithGcpSecret(ctx, ctr, gcpCredentials)
 	if err != nil {
 		return nil, err
@@ -39,18 +42,21 @@ func (m *Gcp) GcpCli(ctx context.Context, gcpCredentials *File) (*Container, err
 	return ctr, nil
 }
 
-// example usage: "dagger call list --account your@email.address --gcp-credentials ~/.config/gcloud/application_default_credentials.json"
-func (m *Gcp) List(ctx context.Context, account string, gcpCredentials *File) (string, error) {
+// example usage: "dagger call list --account your@email.address --project gcp-project-id --gcp-credentials ~/.config/gcloud/credentials.db"
+func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials *File) (string, error) {
 	ctr, err := m.GcpCli(ctx, gcpCredentials)
 	if err != nil {
 		return "", err
 	}
 	return ctr.
+		// WithEnvVariable("CLOUDSDK_CONFIG", "/tmp/.config/gcloud").
+		WithEnvVariable("CLOUDSDK_CORE_PROJECT", project).
+		// WithExec([]string{"mount"}).
 		WithExec([]string{"gcloud", "--account", account, "compute", "instances", "list"}).
 		Stdout(ctx)
 }
 
-// example usage: "dagger call gcr-get-login-password --region us-east-1 --gcp-credentials ~/.config/gcloud/application_default_credentials.json"
+// example usage: "dagger call gcr-get-login-password --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db"
 func (m *Gcp) GcrGetLoginPassword(ctx context.Context, gcpCredentials *File, region string) (string, error) {
 	ctr, err := m.GcpCli(ctx, gcpCredentials)
 	if err != nil {
@@ -63,7 +69,7 @@ func (m *Gcp) GcrGetLoginPassword(ctx context.Context, gcpCredentials *File, reg
 }
 
 // Push ubuntu:latest to GCR under given repo 'test' (repo must be created first)
-// example usage: "dagger call gcr-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/application_default_credentials.json --gcp-account-id 12345 --repo test"
+// example usage: "dagger call gcr-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db --gcp-account-id 12345 --repo test"
 func (m *Gcp) GcrPushExample(ctx context.Context, gcpCredentials *File, region, gcpProject, repo, image string) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
 	return m.GcrPush(ctx, gcpCredentials, region, gcpProject, repo, image, ctr)
