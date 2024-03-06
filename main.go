@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// TODO: rename GCR -> Artifact Registry (GAR?)
+// TODO: rename GAR -> Artifact Registry (GAR?)
 
 type Gcp struct{}
 
@@ -56,8 +56,8 @@ func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials 
 		Stdout(ctx)
 }
 
-// example usage: "dagger call gcr-get-login-password --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db"
-func (m *Gcp) GcrGetLoginPassword(ctx context.Context, gcpCredentials *File, region string) (string, error) {
+// example usage: "dagger call gar-get-login-password --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db"
+func (m *Gcp) GarGetLoginPassword(ctx context.Context, gcpCredentials *File, region string) (string, error) {
 	ctr, err := m.GcpCli(ctx, gcpCredentials)
 	if err != nil {
 		return "", err
@@ -68,15 +68,15 @@ func (m *Gcp) GcrGetLoginPassword(ctx context.Context, gcpCredentials *File, reg
 		Stdout(ctx)
 }
 
-// Push ubuntu:latest to GCR under given repo 'test' (repo must be created first)
-// example usage: "dagger call gcr-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db --gcp-account-id 12345 --repo test"
-func (m *Gcp) GcrPushExample(ctx context.Context, gcpCredentials *File, region, gcpProject, repo, image string) (string, error) {
+// Push ubuntu:latest to GAR under given repo 'test' (repo must be created first)
+// example usage: "dagger call gar-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db --gcp-account-id 12345 --repo test"
+func (m *Gcp) GarPushExample(ctx context.Context, gcpCredentials *File, region, gcpProject, repo, image string) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
-	return m.GcrPush(ctx, gcpCredentials, region, gcpProject, repo, image, ctr)
+	return m.GarPush(ctx, gcpCredentials, region, gcpProject, repo, image, ctr)
 }
 
-func (m *Gcp) GcrPush(ctx context.Context, gcpCredentials *File, region, gcpProject, repo, image string, ctr *Container) (string, error) {
-	// Get the GCR login password so we can authenticate with Publish WithRegistryAuth
+func (m *Gcp) GarPush(ctx context.Context, gcpCredentials *File, region, gcpProject, repo, image string, ctr *Container) (string, error) {
+	// Get the GAR login password so we can authenticate with Publish WithRegistryAuth
 	ctr, err := m.GcpCli(ctx, gcpCredentials)
 	if err != nil {
 		return "", err
@@ -110,9 +110,9 @@ func (m *Gcp) GcrPush(ctx context.Context, gcpCredentials *File, region, gcpProj
 	// secret will be a service account json
 	secret := dag.SetSecret("gcp-reg-cred", regCred)
 	// region e.g. europe-west2
-	gcrHost := fmt.Sprintf("%s-docker.pkg.dev", region)
+	garHost := fmt.Sprintf("%s-docker.pkg.dev", region)
 	// e.g europe-west2-docker.pkg.dev/<project-id>/<artifact-repository>/<docker-image>
-	gcrWithRepo := fmt.Sprintf("%s/%s/%s/%s", gcrHost, gcpProject, repo, image)
+	garWithRepo := fmt.Sprintf("%s/%s/%s/%s", garHost, gcpProject, repo, image)
 
-	return ctr.WithRegistryAuth(gcrHost, "_json_key_base64", secret).Publish(ctx, gcrWithRepo)
+	return ctr.WithRegistryAuth(garHost, "_json_key_base64", secret).Publish(ctx, garWithRepo)
 }
