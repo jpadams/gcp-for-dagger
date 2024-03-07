@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
-
-// TODO: rename GAR -> Artifact Registry (GAR?)
 
 type Gcp struct{}
 
@@ -59,8 +60,8 @@ func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials 
 		Stdout(ctx)
 }
 
-// example usage: "dagger call gar-get-service-account --region us-east-1 --project gcp-project-id --gcp-credentials ~/.config/gcloud/credentials.db"
-func (m *Gcp) GarGetServiceAccount(ctx context.Context, account, region, project string, gcpCredentials *File) (string, error) {
+// example usage: "dagger call gar-ensure-service-account --region us-east-1 --project gcp-project-id --gcp-credentials ~/.config/gcloud/credentials.db"
+func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File) (string, error) {
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
 		return "", err
@@ -69,27 +70,11 @@ func (m *Gcp) GarGetServiceAccount(ctx context.Context, account, region, project
 	// the host, and don't want to burden the user with it via download etc.
 	// TODO: maybe use cache volumes to persist a service account between
 	// invocations? Maybe not super secure though.
+	// No, short lived keys are a feature :-)
 
-	/*
-
-		PROJECT_ID="your-project-id"
-		SERVICE_ACCOUNT_NAME="kube-registry-sa"
-		DISPLAY_NAME="Kube Registry SA"
-
-		gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
-			--display-name="$DISPLAY_NAME"
-
-		gcloud projects add-iam-policy-binding $PROJECT_ID \
-			--member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
-			--role="roles/artifactregistry.writer"
-
-		gcloud iam service-accounts keys create sa-key.json \
-			--iam-account="$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
-
-	*/
 	saName := "dagger-image-push"
 	saDisplayName := "Push artifact registry images from Dagger"
-	// saFullName := fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, project)
+	saFullName := fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, project)
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
 
 	args := []string{"gcloud", "--account", account,
@@ -99,6 +84,9 @@ func (m *Gcp) GarGetServiceAccount(ctx context.Context, account, region, project
 		WithExec(args).
 		Stdout(ctx)
 	if err != nil {
+		// XXX Sad that we can't differentiate between a real permission denied
+		// and a "policy does not exist". Maybe list with a filter (if that's a
+		// thing) would be better?
 		if strings.Contains(fmt.Sprintf("%s", err), "PERMISSION_DENIED") {
 			// policy might not exist, so create it
 			_, err := ctr.
@@ -109,43 +97,108 @@ func (m *Gcp) GarGetServiceAccount(ctx context.Context, account, region, project
 				Stdout(ctx)
 
 			if err != nil {
+				// create failed
 				return "", err
 			}
 		} else {
-			// some other error, propagate it
+			// some other error getting policy, propagate it
 			return "", err
 		}
 	}
-	// at this point, service account will exist
+	// at this point, service account will exist.
+	// we set the role on the project every time because setting it twice seems
+	// to be a noop and this allows us to recover from the case where this
+	// processes was previously interrupted midway through.
 
-	stdout, err := ctr.
+	_, err = ctr.
 		WithExec([]string{"gcloud", "--account", account,
-			"iam", "service-accounts", "add-iam-policy-binding", project,
-			fmt.Sprintf(`--member=%s`, saShortName),
-			`--role=roles/artifactregistry.writer`,
+			"projects", "add-iam-policy-binding", project,
+			"--member", saFullName,
+			`--role=roles/artifactregistry.admin`,
 		}).
 		Stdout(ctx)
+	if err != nil {
+		log.Printf("error adding iam policy binding: %s", err)
+		return "", err
+	}
 
-	fmt.Printf("stdout 2: %s\n", stdout)
+	// now create a single-use sa key that we can use for this push.
+	// The calling function is responsible for cleaning us up.
+	ctr = ctr.
+		WithExec([]string{
+			"gcloud", "--account", account, "iam", "service-accounts", "keys",
+			"create", "/tmp/sa-key.json", "--iam-account", saShortName,
+		})
+	_, err = ctr.Stdout(ctx)
+	if err != nil {
+		log.Printf("error creating key for sa: %s", err)
+		return "", err
+	}
+	return ctr.File("/tmp/sa-key.json").Contents(ctx)
+}
 
-	return "TODO", nil
+type ServiceAccount struct {
+	Type                    string `json:"type"`
+	ProjectID               string `json:"project_id"`
+	PrivateKeyID            string `json:"private_key_id"`
+	PrivateKey              string `json:"private_key"`
+	ClientEmail             string `json:"client_email"`
+	ClientID                string `json:"client_id"`
+	AuthURI                 string `json:"auth_uri"`
+	TokenURI                string `json:"token_uri"`
+	AuthProviderX509CertURL string `json:"auth_provider_x509_cert_url"`
+	ClientX509CertURL       string `json:"client_x509_cert_url"`
+	UniverseDomain          string `json:"universe_domain"`
 }
 
 // Push ubuntu:latest to GAR under given repo 'test' (repo must be created first)
 // example usage: "dagger call gar-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db --gcp-account-id 12345 --repo test"
-func (m *Gcp) GarPushExample(ctx context.Context, gcpCredentials *File, account, region, project, repo, image string) (string, error) {
+func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
-	return m.GarPush(ctx, gcpCredentials, account, region, project, repo, image, ctr)
+	return m.GarPush(ctx, ctr, account, region, project, repo, image, gcpCredentials)
 }
 
-func (m *Gcp) GarPush(ctx context.Context, gcpCredentials *File, account, region, project, repo, image string, pushCtr *Container) (string, error) {
-	// Get the GAR login password so we can authenticate with Publish WithRegistryAuth
-	sa, err := m.GarGetServiceAccount(ctx, account, region, project, gcpCredentials)
+func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File, keyId string) error {
+	saName := "dagger-image-push"
+	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
+	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
+		log.Printf("error getting gcloud cli in up key id %s: %s", keyId, err)
+		return err
+	}
+	_, err = ctr.
+		WithExec([]string{
+			"gcloud", "--account", account,
+			"iam", "service-accounts", "keys", "delete",
+			keyId, "--iam-account", saShortName,
+		}).
+		Stdout(ctx)
+	if err != nil {
+		log.Printf("error cleaning up key id %s: %s", keyId, err)
+		return err
+	}
+	return nil
+}
+
+func (m *Gcp) GarPush(ctx context.Context, pushCtr *Container, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
+	// Get the GAR login password so we can authenticate with Publish WithRegistryAuth
+	saStr, err := m.GarEnsureServiceAccountKey(ctx, account, region, project, gcpCredentials)
+	if err != nil {
+		log.Printf("error ensuring key for sa: %s", err)
 		return "", err
 	}
+	sa := &ServiceAccount{}
+	err = json.Unmarshal([]byte(saStr), sa)
+	if err != nil {
+		log.Printf("error unmarshalling key for sa: %s", err)
+		return "", err
+	}
+
+	defer m.CleanupServiceAccountKey(ctx, account, region, project, gcpCredentials, sa.PrivateKeyID)
+	bs := base64.StdEncoding.EncodeToString([]byte(saStr))
+
 	// secret will be a service account json
-	secret := dag.SetSecret("gcp-reg-cred", sa)
+	secret := dag.SetSecret("gcp-reg-cred", bs)
 	// region e.g. europe-west2
 	garHost := fmt.Sprintf("%s-docker.pkg.dev", region)
 	// e.g europe-west2-docker.pkg.dev/<project-id>/<artifact-repository>/<docker-image>
