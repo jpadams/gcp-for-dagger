@@ -1,3 +1,9 @@
+// Push a container image into Google Artifact Registry
+//
+// This module lets you push a container into Google Artifact Registry, automating the tedious manual steps of setting up a service account for the docker credential
+//
+// For more info and sample usage, check the readme: https://github.com/lukemarsden/dagger-gcp
+
 package main
 
 import (
