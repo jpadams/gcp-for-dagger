@@ -1,9 +1,6 @@
 {
   "name": "gcp",
   "sdk": "go",
-  "root-for": [
-    {
-      "source": "."
-    }
-  ]
+  "source": ".",
+  "engineVersion": "v0.11.6"
 }
