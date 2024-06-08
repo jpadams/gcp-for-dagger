@@ -1,8 +1,6 @@
 // Push a container image into Google Artifact Registry
 //
 // This module lets you push a container into Google Artifact Registry, automating the tedious manual steps of setting up a service account for the docker credential
-//
-// For more info and sample usage, check the readme: https://github.com/daggerverse/dagger-gcp
 
 package main
 
@@ -18,7 +16,6 @@ import (
 
 type Gcp struct{}
 
-// example usage: "dagger call get-secret --gcp-credentials ~/.config/gcloud/credentials.db"
 func (m *Gcp) GetSecret(ctx context.Context, gcpCredentials *File) (string, error) {
 	ctr, err := m.WithGcpSecret(ctx, dag.Container().From("ubuntu:latest"), gcpCredentials)
 	if err != nil {
@@ -53,7 +50,6 @@ func (m *Gcp) GcloudCli(ctx context.Context, project string, gcpCredentials *Fil
 	return ctr, nil
 }
 
-// example usage: "dagger call list --account your@email.address --project gcp-project-id --gcp-credentials ~/.config/gcloud/credentials.db"
 func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials *File) (string, error) {
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
@@ -66,7 +62,6 @@ func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials 
 		Stdout(ctx)
 }
 
-// example usage: "dagger call gar-ensure-service-account --region us-east-1 --project gcp-project-id --gcp-credentials ~/.config/gcloud/credentials.db"
 func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File) (string, error) {
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
@@ -158,7 +153,6 @@ type ServiceAccount struct {
 }
 
 // Push ubuntu:latest to GAR under given repo 'test' (repo must be created first)
-// example usage: "dagger call gar-push-example --region us-east-1 --gcp-credentials ~/.config/gcloud/credentials.db --gcp-account-id 12345 --repo test"
 func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
 	return m.GarPush(ctx, ctr, account, region, project, repo, image, gcpCredentials)
