@@ -152,7 +152,7 @@ type ServiceAccount struct {
 	UniverseDomain          string `json:"universe_domain"`
 }
 
-// Push ubuntu:latest to GAR under given repo 'test' (repo must be created first)
+// Push ubuntu:latest to GAR under existing repo
 func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
 	return m.GarPush(ctx, ctr, account, region, project, repo, image, gcpCredentials)
