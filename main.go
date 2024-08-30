@@ -90,6 +90,7 @@ func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, p
 		// thing) would be better?
 		if strings.Contains(fmt.Sprintf("%s", err), "PERMISSION_DENIED") {
 			// policy might not exist, so create it
+			fmt.Println("in cond")
 			_, err := ctr.
 				WithExec([]string{"gcloud", "--account", account,
 					"iam", "service-accounts", "create", saName,
