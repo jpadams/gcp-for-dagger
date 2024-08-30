@@ -73,7 +73,7 @@ func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, p
 	// invocations? Maybe not super secure though.
 	// No, short lived keys are a feature :-)
 
-	saName := "dagger-image-push"
+	saName := "dagger"
 	saDisplayName := "Push artifact registry images from Dagger"
 	saFullName := fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, project)
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
@@ -159,7 +159,7 @@ func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo
 }
 
 func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File, keyId string) error {
-	saName := "dagger-image-push"
+	saName := "dagger"
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
