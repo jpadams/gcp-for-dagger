@@ -159,7 +159,7 @@ func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo
 }
 
 func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File, keyId string) error {
-	saName := "dagger"
+	saName := "dagger-image-push"
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
