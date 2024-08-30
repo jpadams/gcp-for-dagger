@@ -73,8 +73,7 @@ func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, p
 	// invocations? Maybe not super secure though.
 	// No, short lived keys are a feature :-)
 
-	//saName := "dagger-image-push"
-	saName := "dagger"
+	saName := "dagger-image-push"
 	saDisplayName := "Push artifact registry images from Dagger"
 	saFullName := fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, project)
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
