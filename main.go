@@ -100,10 +100,12 @@ func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, p
 
 			if err != nil {
 				// create failed
+				fmt.Println("create failed")
 				return "", err
 			}
 		} else {
 			// some other error getting policy, propagate it
+				fmt.Println("something else failed")
 			return "", err
 		}
 	}
