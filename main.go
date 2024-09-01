@@ -10,13 +10,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"main/internal/dagger"
 	"strings"
 	"time"
 )
 
 type Gcp struct{}
 
-func (m *Gcp) GetSecret(ctx context.Context, gcpCredentials *File) (string, error) {
+func (m *Gcp) GetSecret(ctx context.Context, gcpCredentials *dagger.File) (string, error) {
 	ctr, err := m.WithGcpSecret(ctx, dag.Container().From("ubuntu:latest"), gcpCredentials)
 	if err != nil {
 		return "", err
@@ -26,7 +27,7 @@ func (m *Gcp) GetSecret(ctx context.Context, gcpCredentials *File) (string, erro
 		Stdout(ctx)
 }
 
-func (m *Gcp) WithGcpSecret(ctx context.Context, ctr *Container, gcpCredentials *File) (*Container, error) {
+func (m *Gcp) WithGcpSecret(ctx context.Context, ctr *dagger.Container, gcpCredentials *dagger.File) (*dagger.Container, error) {
 	// gcloud wants to open file as writable, so we can't use WithMountedSecret here sadly
 	return ctr.WithFile("/root/.config/gcloud/credentials.db", gcpCredentials), nil
 
@@ -38,7 +39,7 @@ func (m *Gcp) WithGcpSecret(ctx context.Context, ctr *Container, gcpCredentials 
 	// return ctr.WithMountedSecret("/tmp/.config/gcloud/credentials.db", secret), nil
 }
 
-func (m *Gcp) GcloudCli(ctx context.Context, project string, gcpCredentials *File) (*Container, error) {
+func (m *Gcp) GcloudCli(ctx context.Context, project string, gcpCredentials *dagger.File) (*dagger.Container, error) {
 	ctr := dag.Container().
 		From("gcr.io/google.com/cloudsdktool/google-cloud-cli:467.0.0").
 		WithEnvVariable("BUST_CACHE", time.Now().String()).
@@ -50,7 +51,7 @@ func (m *Gcp) GcloudCli(ctx context.Context, project string, gcpCredentials *Fil
 	return ctr, nil
 }
 
-func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials *File) (string, error) {
+func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials *dagger.File) (string, error) {
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
 		return "", err
@@ -62,7 +63,7 @@ func (m *Gcp) List(ctx context.Context, account, project string, gcpCredentials 
 		Stdout(ctx)
 }
 
-func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File) (string, error) {
+func (m *Gcp) GarEnsureServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *dagger.File) (string, error) {
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
 	if err != nil {
 		return "", err
@@ -153,12 +154,12 @@ type ServiceAccount struct {
 }
 
 // Push ubuntu:latest to GAR under existing repo
-func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
+func (m *Gcp) GarPushExample(ctx context.Context, account, region, project, repo, image string, gcpCredentials *dagger.File) (string, error) {
 	ctr := dag.Container().From("ubuntu:latest")
 	return m.GarPush(ctx, ctr, account, region, project, repo, image, gcpCredentials)
 }
 
-func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *File, keyId string) error {
+func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, project string, gcpCredentials *dagger.File, keyId string) error {
 	saName := "dagger-image-push"
 	saShortName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saName, project)
 	ctr, err := m.GcloudCli(ctx, project, gcpCredentials)
@@ -180,7 +181,7 @@ func (m *Gcp) CleanupServiceAccountKey(ctx context.Context, account, region, pro
 	return nil
 }
 
-func (m *Gcp) GarPush(ctx context.Context, pushCtr *Container, account, region, project, repo, image string, gcpCredentials *File) (string, error) {
+func (m *Gcp) GarPush(ctx context.Context, pushCtr *dagger.Container, account, region, project, repo, image string, gcpCredentials *dagger.File) (string, error) {
 	// Get the GAR login password so we can authenticate with Publish WithRegistryAuth
 	saStr, err := m.GarEnsureServiceAccountKey(ctx, account, region, project, gcpCredentials)
 	if err != nil {
